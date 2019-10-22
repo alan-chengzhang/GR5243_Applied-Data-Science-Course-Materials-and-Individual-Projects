@@ -1,0 +1,139 @@
+---
+title: "Anaysis of the Clinical Trial for the 3-Drug Cocktail to Treat HIV"
+author: "My Name"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+  theme: cayman
+highlight: github
+---
+  
+```{r libraries, echo = FALSE, warning=FALSE, message=FALSE}
+library(data.table)
+library(rmarkdown)
+library(knitr)
+library(DT)
+```
+
+```{r chunk_options, echo = FALSE, tidy = TRUE}
+opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+```
+
+```{r source_files}
+
+```
+
+```{r constants}
+file.hiv.data <- "AIDS data.csv"
+
+id.name <- "id"
+time.aids.or.death.name <- "time"
+time.death.name <- "time_d"
+outcome.aids.or.death.name <- "censor"
+outcome.death.name <- "censor_d"
+treatment.name <- "tx"
+age.name <- "age"
+sex.name <- "sex"
+
+male.name <- "Male"
+sex.category.male <- 1
+sex.category.female <- 2
+
+received.treatment <- 1
+no.treatment <- 0
+
+one.digit <- 1
+```
+
+```{r functions}
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+
+count.and.percentage <- function(dat, variable.name, by.names, na.rm = TRUE){
+  require(data.table)
+  setDT(dat)
+  
+  tab <- dat[, .(C1 = sum(get(variable.name), na.rm = na.rm), N = .N, P1 = 100 * mean(get(variable.name), na.rm = na.rm)), by = by.names]
+  setnames(x = tab, old = c("C1", "P1"), new = c(sprintf("%s: Count", variable.name), sprintf("%s: Percentage", variable.name)))
+  return(tab)
+}
+
+mean.and.sd <- function(dat, variable.name, by.names, na.rm = TRUE){
+  require(data.table)
+  setDT(dat)
+  
+  tab <- dat[, .(M1 = mean(get(variable.name), na.rm = na.rm), S1 = sd(get(variable.name), na.rm = na.rm)), by = by.names]
+  setnames(x = tab, old = c("M1", "S1"), new = c(sprintf("%s: Mean", variable.name), sprintf("%s: SD", variable.name)))
+  return(tab)
+}
+```
+
+```{r read_data}
+dat <- fread(input = file.hiv.data)
+```
+
+```{r data_investigations, eval = FALSE}
+dat[, .(n = .N, `Number of Unique IDs` = length(unique(get(id.name))))]
+dat[, summary(get(time.aids.or.death.name))]
+dat[, summary(get(time.death.name))]
+dat[, .N, keyby = outcome.aids.or.death.name]
+dat[, .N, keyby = outcome.death.name]
+dat[, .N, keyby = treatment.name]
+dat[, summary(get(age.name))]
+dat[, .N, keyby = sex.name]
+```
+
+```{r clean_data}
+dat[, eval(male.name) := 1*(get(sex.name) == sex.category.male)]
+```
+
+## Introduction
+
+We are working with the clinical trial data on the 3-Drug Cocktail, which was used to treat HIV.
+
+## Analysis
+
+```{r analyze_data}
+n <- dat[, .N]
+n.treatment <- dat[get(treatment.name) == received.treatment, .N]
+n.untreated <- dat[get(treatment.name) == no.treatment, .N]
+```
+
+The sample included a total of `r n` patients, including `r n.treatment` patients randomized to receive the 3-Drug Cocktail and `r n.untreated` randomized to receive only the 2-Drug Cocktail.
+
+```{r summarize_demographics_by_treatment}
+tab.male <- count.and.percentage(dat = dat, variable.name = male.name, by.names = treatment.name)
+datatable(data = tab.male[, lapply(X = .SD, FUN = "round.numerics", digits = one.digit)], rownames = FALSE)
+
+tab.age <- mean.and.sd(dat = dat, variable.name = age.name, by.names = treatment.name)
+datatable(data = tab.age[, lapply(X = .SD, FUN = "round.numerics", digits = one.digit)], rownames = FALSE)
+```
+
+The above tables show the summary measures of sex and age.  The percentage of males and mean age are very similar in each group.  This is in line with the expectations of a randomized trial.
+
+```{r outcomes_percentages}
+tab.pct.aids.or.death <- count.and.percentage(dat = dat, variable.name = outcome.aids.or.death.name, by.names = treatment.name)
+datatable(data = tab.pct.aids.or.death[, lapply(X = .SD, FUN = "round.numerics", digits = one.digit)], rownames = FALSE)
+
+tab.pct.death <- count.and.percentage(dat = dat, variable.name = outcome.death.name, by.names = treatment.name)
+datatable(data = tab.pct.death[, lapply(X = .SD, FUN = "round.numerics", digits = one.digit)], rownames = FALSE)
+```
+
+The above tables show the percentage of patients in the treatment group with adverse outcomes of AIDS or death (composite) or death.
+
+
+```{r event_times}
+tab.time.aids.or.death <- mean.and.sd(dat = dat, variable.name = time.aids.or.death.name, by.names = treatment.name)
+datatable(data = tab.time.aids.or.death[, lapply(X = .SD, FUN = "round.numerics", digits = one.digit)], rownames = FALSE)
+
+tab.time.death <- mean.and.sd(dat = dat, variable.name = time.death.name, by.names = treatment.name)
+datatable(data = tab.time.death[, lapply(X = .SD, FUN = "round.numerics", digits = one.digit)], rownames = FALSE)
+```
+
+## Conclusions
+
+Based on the observed statistics, the 3-Drug Cocktail appears to have been effective in improving the outcomes for patients with HIV.  A smaller percentage of these patients progressed to AIDS or Death compared to those taking the 2-Drug Cocktail.  Among those with an outcome, the overall time to the event was greater for the treatment group as well, indicating lengthier survival free of the disease.

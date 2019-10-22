@@ -1,0 +1,51 @@
+---
+title: "Anaysis of the Clinical Trial for the 3-Drug Cocktail to Treat HIV"
+author: "My Name"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+  theme: cayman
+highlight: github
+---
+  
+```{r libraries, warning=FALSE, message=FALSE}
+library(data.table)
+library(rmarkdown)
+library(knitr)
+library(DT)
+```
+
+```{r chunk_options, tidy = TRUE}
+opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+```
+
+```{r source_files}
+
+```
+
+```{r constants}
+
+```
+
+```{r functions}
+
+```
+
+```{r read_data}
+
+```
+
+```{r clean_data}
+
+```
+
+## Introduction
+
+We are working with the clinical trial data on the 3-Drug Cocktail, which was used to treat HIV.
+
+## Analysis
+
+```{r analyze_data}
+
+```
+
