@@ -1,0 +1,754 @@
+---
+title: "Homework 1"
+author: "Cheng Zhang, cz2532, cz2532@columbia.edu"
+date: ""
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(echo = TRUE, eval = TRUE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+```
+
+```{r libraries}
+# Note:  If loading any of the libraries below generates an error, then use the install.packages function to install them first.
+library(prettydoc)
+library(data.table)
+library(DT)
+```
+
+```{r constants}
+## Any constant variables may be specified here.
+num.digits <- 2
+
+id.name <- "Student ID"
+
+file.pk <- "../Data/Prior Courses.csv"
+file.kc1 <- "../Data/Knowledge Check -- Level 2.csv"
+file.kc2 <- "../Data/Knowledge Check -- Level 5.csv"
+file.grades <- "../Data/Grades.csv"
+
+pk.level.name <- "Prior Knowledge Level"
+
+trig.name <- "Trigonometry"
+calc.name <- "Calculus"
+
+threshold.kc1 <- 2
+threshold.kc2 <- 5
+
+```
+
+```{r source_files}
+## Any code contained in separate files (with a .R extension) can be called here using the source command.
+
+```
+
+```{r functions}
+# Use this function within data.table calls, e.g. dat[, lapply(X = .SD, FUN = "round.numerics", digits = 1)] to round all numeric columns to the specified number of digits.
+
+max.with.na <- function(x){
+  y <- as.numeric(x[!is.na(as.numeric(x))])
+  if(length(y) == 0){
+    return(NA_real_)
+  }
+  if(length(y) > 0){
+    return(x = max(y, na.rm = TRUE))
+  }
+}
+
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+
+```
+
+
+
+## About The Data
+
+We will be working with a simulated data set related to educational outcomes and technology.  Students in an introductory Physics course were tracked throughout a semester long class.  In addition to the lectures and textbook, the students also used a digital system to work practice problems.  The system includes an algorithm that assesses the level of a student's knowledge in the topic.  It also measures the amount of minutes spent on the subject during the relevant period of time.  Prior to the midterm exam, the students were expected to use the system and reach a level of `r threshold.kc1` on a number of topics.  Prior to the final exam, the students were expected to reach a level of `r threshold.kc2` on all of the topics.  The students also completed homework assignments, a midterm, and a final, which were all scored on a scale from 0 to 100 points.  Based on their performance in the class, the students received overall scores that would form the basis of their grades.  After the completion of the class, the university wanted to study the performance of the students and the impact of the digital system.  To incorporate prior levels of knowledge, the university gathered data about the performance of these students in their mathematics curriculum of trigonometry and calculus.
+
+The data were recorded in the following files:
+
+**Prior Knowledge**:  `r file.pk`
+
+**Digital System, Prior to the Midterm Examination**:  `r file.kc1`
+
+**Digital System, Prior to the Final Examination**:  `r file.kc2`
+
+**Scores on the Homework, Exams, and Overall**:  `r file.grades`
+
+**Delimiter**:  Each column of each file is separated with a comma **,** delimiter.
+
+All of the data files include an identifier column **`r id.name`** so that the information from different files can be linked.  These identifiers also link to the names of the student and other private information about them, which have been separately stored in a secure location.
+
+In some places, the data may contain unusual values.  Any value that does not match up with reasonable expectations for the measure should be converted to a missing value for the purpose of the analysis.
+
+## Completing the Assignment
+
+Use the information in the files to answer the questions below.  To receive full credit, you must provide the output along with the full set of code used to generate it.
+
+This assignment includes a relatively small amount of information.  It would be possible to open all of the files in spreadsheet programs, perform visual inspections, or even answer the questions using other tools.  **However, you must fully complete this assignment using R.**  
+
+**Tips**:  We recommend familiarizing yourself with the **data.table** package in R.  This will enable you to work with large amounts of data.  Many of the questions can be answered with a relatively small amount of code by making use of data.table's functionality.  We also recommend organizing your code.  Within a folder (e.g. Homework 1 for this class), create separate subfolders for the Data and the Analysis.  Store this file in the Analysis folder.  Then you can use relative directories to read in the data.  The template for this assignment includes variables defined in the **constant** code chunk that refer to the names of all of the files.
+
+
+```{r question1, echo=FALSE, eval=TRUE}
+question.counter <- 1
+```
+
+
+## Question `r question.counter`: Preliminaries
+
+One way to read data files is using the **fread** function.  Read in the data and answer these questions:
+
+```{r read_data}
+setwd("C://Users//Alan_//Desktop//Columbia courses//Semester2//applied DS//David//Homework1//Data")
+grades <- fread(input = file.grades)
+kc1 <- fread(input = file.kc1)
+kc2 <- fread(input = file.kc2)
+pk <- fread(input = file.pk)
+```
+
+### Question `r question.counter`a) Dimensions
+
+How many rows and columns are there in each file?  Use the **dim** command to display the dimensions.
+
+#### Prior Knowledge
+
+```{r dim_pk}
+pk_row <- dim(pk)[1]
+pk_col <- dim(pk)[2]
+```
+For Prior Knowledge, there are `r pk_row` rows and `r pk_col` colunms
+
+#### Knowledge Check 1
+```{r dim_kc1}
+kc1_row <- dim(kc1)[1]
+kc1_col <- dim(kc1)[2]
+```
+For Knowledge Check 1, there are `r kc1_row` rows and `r kc1_col` colunms
+
+#### Knowledge Check 2
+```{r dim_kc2}
+kc2_row <- dim(kc2)[1]
+kc2_col <- dim(kc2)[2]
+```
+For Knowledge Check 2, there are `r kc2_row` rows and `r kc2_col` colunms
+
+#### Grades
+```{r dim_grades}
+grades_row <- dim(grades)[1]
+grades_col <- dim(grades)[2]
+```
+For Grades, there are `r grades_row` rows and `r grades_col` colunms
+
+### Question `r question.counter`b) Subjects
+
+How many unique students were in the class?  Make sure this calculation includes information from all of the files.
+
+```{r num_unique_students}
+whole_id <- rbindlist(l=list(grades[,1],kc1[,1],kc2[,1],pk[,1]),fill = TRUE)
+whole_id[,.('unique_students'=length(unique(get("Student ID"))))]
+```
+
+
+```{r question2, echo=FALSE, eval=TRUE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`:  Multiple Records
+
+Which files (if any) contain more than 1 row per student?  Display the records from these files for any students with multiple rows.  Write a function called **display.multiple.records** that will perform this work on each table of data.  Use the **datatable** function in the **DT** package to display an HTML table of these results in sorted order of `r id.name`.  (In spite of the similarity in their names, the **datatable** function in the **DT** library for displaying tables in HTML should not be confused with the **data.table package** for data processing.)  If there are no students with multiple records in a given table, display an empty table as the result.
+
+### Firstly, I write a function to do the analysis
+```{r function_display.multiple.records}
+library(DT)
+display.multiple.records<-function(data,key='Student ID'){
+  dat <- data[duplicated(data,by=key),get(key)]
+  mul_all <- data[get(key) %in% dat,]
+  return(datatable(mul_all,rownames=FALSE))
+}
+
+```
+
+
+#### Prior Knowledge
+```{r mult_rows_pk}
+display.multiple.records(pk)
+```
+
+#### Knowledge Check 1
+```{r mult_rows_kc1}
+display.multiple.records(kc1)
+```
+
+#### Knowledge Check 2
+```{r mult_rows_kc2}
+display.multiple.records(kc2)
+
+```
+
+#### Grades
+```{r mult_rows_grades}
+display.multiple.records(grades)
+
+```
+
+
+
+```{r question3, echo=FALSE, eval=TRUE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`:  Reduction to a Single Record
+
+To handle the students with multiple records, we decided to summarize their prior knowledge as follows:
+
+* For each student, the highest score in a prior class will be used.  If no numeric record is included, an NA value should be used.  For reference, we have provided a function called **max.with.na** that can perform this calculation for a single student.
+
+* We will also create an overall score called `r pk.level.name`.  For each student, this will be defined as the average of the student's highest score in `r trig.name` and the student's highest score in `r calc.name`.  For students who did not take both of these classes, the overall score will be based on the measured values.
+
+Based on these criteria, we will answer the following questions.
+
+### Question `r question.counter`a) Summary Before the Reduction  
+
+Starting with the original table of Prior Knowledge scores, compute the following for each class:  the number of measured records, the number of unique students with a measured record, the average score among all of the measured records, and the standard deviation of the scores among all of the measured records.  Round all of the numeric values to `r num.digits` decimal places.  Write a function called **summarize.pk.class** that will display the name of the prior class along with these figures using the **datatable** method from the **DT** package.
+
+
+Firstly, I set parameters and check of type of variable in the table
+
+
+```{r para_func}
+num.record <- 'number of measured records'
+num.unique.stu <- 'number of unique students'
+avg.score <- 'average score'
+sd.score <- 'standard deviation of the scores'
+
+summary(pk)
+
+```
+
+
+The Trigononmetry is character, which means there are some values that are not numbers. We need to write a function to transfer them to NA and transfer other values to be numbers. So, secondly, I write a function to do that, the function is from the slide in lecture 2.
+
+
+```{r func_identify_NA}
+identify.na <- function(x){
+  w1 <- which(is.na(x))
+  options(warn = -1)
+  y <- as.numeric(x)
+  options(warn = 0)
+  w2 <- which(is.na(y))
+  the.indices <- w2[!(w2 %in% w1)]
+  the.culprits <- unique(x[the.indices])
+  return(the.culprits)
+}
+
+```
+
+
+
+Thirdly, I mniputale the data using previous function andwrite function required by the question
+
+```{r transform_data & function}
+the.culprits <- identify.na(x=pk[,get('Trigonometry')])
+pk[,'ori_Trigonometry':= Trigonometry]
+pk[get('Trigonometry') %in% the.culprits, 'Trigonometry' := NA]
+pk[,'Trigonometry' := as.numeric(get('Trigonometry'))]
+
+
+summarize.pk.class <- function(data,class){
+  require(data.table)
+  require(DT)
+  data.without.na <- data[!is.na(get(class)),]
+  tab <- data.without.na[,.(N=.N,
+                     len = length(unique(get('Student ID'))),
+                     avg = mean(get(class)),
+                     sd = sd(get(class)))]
+  setnames(x = tab, old = c("N", "len", "avg", "sd"), 
+         new = c(num.record, num.unique.stu, avg.score, sd.score))
+  tab <- tab[, lapply(X = .SD, FUN = "round.numerics", digits = 2)]
+  return(datatable(tab,rownames=FALSE))
+}
+
+```
+
+
+#### `r trig.name`
+
+```{r pre_summary_trig}
+pk.Trigonometry <- pk[,1:2]
+summarize.pk.class(data=pk.Trigonometry,class='Trigonometry')
+
+```
+
+#### `r calc.name`
+
+```{r pre_summary_calc}
+pk.Calculus <- pk[,c(1,3)]
+summarize.pk.class(data=pk.Calculus,class='Calculus')
+
+```
+
+$Special Note$ :
+In 3(a) I cleaned the data and make a new column named ori_Trigonometry in pk dataset. So,in the latter questions my code maybe a litte bit different when I select the column.
+
+
+### Question `r question.counter`b) Reduction of Information
+
+Now create a new table called **pk.reduced** that will contain 1 record per student according to the criteria specified above.  For the students with multiple records in the original file, display their records in the **pk.reduced** table using the **datatable** function in the **DT** package.
+
+
+Fristly, I need to write the funciton to make each student have only one record.There is a function provided by the prodessor in this homework. I put it in the following code trunk.
+
+```{r max.with.na}
+max.with.na <- function(x){
+  y <- as.numeric(x[!is.na(as.numeric(x))])
+  if(length(y) == 0){
+    return(NA_real_)
+  }
+  if(length(y) > 0){
+    return(x = max(y, na.rm = TRUE))
+  }
+}
+```
+
+
+
+I use the cleaned data, which has NA but not character in score for this part.
+```{r create_pk.reduced}
+
+pk.cleaned <- pk[,1:3]
+pk.reduced <- pk.cleaned[,lapply(X=.SD, FUN = "max.with.na"),
+                         .SDcol = c("Trigonometry","Calculus"), by = "Student ID"]
+# "max.with.na" make the record with the highest score to stay in the datatable
+
+mul_record <- pk.cleaned[duplicated(pk.cleaned, by="Student ID"),"Student ID"]
+mul_record_student <- unique(mul_record[,`Student ID`])
+mul_record_student_record <- pk.reduced[`Student ID` %in% mul_record_student,]
+
+datatable(mul_record_student_record,rownames = FALSE)
+
+
+
+```
+
+
+### Question `r question.counter`c) Summary After the Reduction
+
+Now, using the **pk.reduced** table, compute the following for each class and the `r pk.level.name`:  the number of measured records, the number of unique students with a measured record, the average score among all of the measured records, and the standard deviation of the scores among all of the measured records.  Round all of the numeric values to `r num.digits` decimal places.
+
+
+
+
+Firstly, I create the *Prior Knowledge Level* accoring to the question, using pk.reduced.
+To be specific, for the NA values, I use the Calculus score as their *Prior Knowledge Level*
+
+```{r}
+pk.reduced[,'Prior Knowledge Level':=(Trigonometry+Calculus)/2,
+               by='Student ID']
+pk.reduced[is.na(`Prior Knowledge Level`),`Prior Knowledge Level`:= Calculus, by='Student ID']
+
+```
+
+
+
+I use the function summarize.pk.class to get the new table. Since the data had already been cleaned(without NA, character and duplicated lines), we can direcly use it in function.
+
+Prior Knowledge Level. For each student, this will be defined as the average of the student’s highest score in Trigonometry and the student’s highest score in Calculus. For students who did not take both of these classes, the overall score will be based on the measured values.
+
+
+#### `r trig.name`
+
+```{r post_summary_trig}
+summarize.pk.class(data = pk.reduced[,c(1,2)],class = "Trigonometry")
+
+```
+
+#### `r calc.name`
+
+```{r post_summary_calc}
+summarize.pk.class(data = pk.reduced[,c(1,3)],class = "Calculus")
+
+```
+
+#### `r pk.level.name`
+
+```{r post_summary_overall}
+summarize.pk.class(data = pk.reduced[,c(1,4)],class = "Prior Knowledge Level")
+
+```
+
+
+
+```{r question4, echo=FALSE, eval=TRUE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`: Combining the Tables
+
+Now we want to create one comprehensive table called **dat**.  It should be constructed according to the following criteria:
+
+* Each student has 1 row of information (1 record).
+
+* The `r id.name`s are sorted in increasing order (1, 2, 3, etc.)
+
+* The columns first include the Prior Knowledge, then the Knowledge Check 1, then the Knowledge Check 2, and then the Grades.
+
+* Every column has a unique and meaningful name.
+
+After creating this table, display it using the **datatable** function in the **DT** package.  Round all of the numeric measures to `r num.digits` decimal places.
+
+**Hints**:  There are a number of ways to combine multiple tables.  The **data.table(a, b, c, ...)** function will bind the columns of multiple objects.  The **merge(x, y, by, all.x, all.y)** function will combine (join) two tables **x** and **y** according to a character vector of column names **by** (or alternatively **by.x* and **by.y**).  Specifying **all.x** and **all.y** as TRUE or FALSE (in different combinations) will give different options for combining tables with different records or elements.  By comparison, **data.table** and **merge** have different advantages and drawbacks.  Using **data.table** is more straightforward, but it assumes more about the structure of the tables.  Using **merge** is more flexible in terms of the ordering and differences in the tables, but it requires more code and complexity for joining more than two tables together.  Meanwhile, combining the tables based on the **`r id.name`** can encounter ordering problems as a character vector.  It may be easier to extract a numeric version of the **`r id.name`** for sorting purposes.  However, the final version of the table should only include the original identifier.
+
+
+Accoring to the question, we should use cleaned version of pk, so we should use pk.reduced.
+
+First, we write a function to convert id into numeric values
+```{r}
+new.name <- "ID"
+old.name <- "Student ID"
+pattern.old.id <- "Student"
+
+id.to.num <- function(data){
+  dat <- data[,eval(new.name):= gsub(pattern=pattern.old.id,replacement = "",x=get(old.name))]
+  dat[,eval(new.name):=as.numeric(trimws(x=get(new.name),which = "both"))]
+  return(dat)
+}
+```
+
+
+Then we rename the pk and kc1 to add where the variables from.
+```{r}
+pk.new <- pk.reduced
+setnames(x = pk.new, old = c("Trigonometry", "Calculus"), new = c("Trigonometry_pk", "Calculus_pk"))
+kc1.new <- kc1
+setnames(x = kc1.new, old = names(kc1), 
+         new = c("Student ID","Mechanics_kc1", "Momentum_kc1","Gravity_kc1","Time: Mechanics_kc1",
+                 "Time: Momentum_kc1","Time: Gravity_kc1"))
+kc2.new <- kc2
+setnames (x=kc2.new, old=names(kc2),
+          new = c("Student ID","Mechanics_kc2", "Momentum_kc2", "Gravity_kc2", "Electricity_kc2",
+                   "Magnetism_kc2","Relativity_kc2","Time: Mechanics_kc2", "Time: Momentum_kc2",
+                   "Time: Gravity_kc2","Time: Electricity_kc2", "Time: Magnetism_kc2", 
+                   "Time: Relativity_kc2"))
+```
+
+```{r construct_dat}
+combine_pk_kc1 <- merge(x=pk.new, y=kc1.new, by='Student ID')
+combine_pk_kc1_kc2 <- merge(x=combine_pk_kc1, y=kc2.new, by='Student ID')
+combine_all <- merge(x=combine_pk_kc1_kc2, y=grades, by='Student ID')
+combine_all <- id.to.num(combine_all)
+dat <- setorderv(x=combine_all, cols = "ID", order=1, na.last=FALSE)
+dat[,ID:=NULL]
+
+dat <- dat[, lapply(X = .SD, FUN = "round.numerics", digits = 2)]
+datatable(dat,rownames=FALSE)
+
+```
+
+
+```{r question5, echo=FALSE, eval=TRUE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`: Knowledge Check 1
+
+How did the students do on the first knowledge check?  Create a table with the following columns:
+
+* Topic
+
+* Number of Students (with measured scores)
+
+* Mean Score
+
+* Standard Deviation of Scores
+
+* Percentage Reaching Threshold `r threshold.kc1` or Higher (on a scale from 0 to 100).
+
+* Mean Minutes
+
+* Standard Deviation of Minutes
+
+The table should have one row for each topic in the first Knowledge Check.  Round all numeric values to `r num.digits` decimal places.
+
+
+```{r}
+summary(kc1)
+```
+
+
+
+```{r summary_kc1}
+count.not.na <- function(data){
+  return(sum(!is.na(data)))
+}
+
+count.percentage <- function(data){
+  percent <- sum(data >= 2.0, na.rm = TRUE)/sum(!is.na(data),na.rm = TRUE)
+  return(percent)
+}
+
+
+kc1.courses <- c("Mechanics_kc1", "Momentum_kc1", "Gravity_kc1")
+
+student.number <- dat[,lapply(X = .SD, FUN = "count.not.na"), .SDcols = kc1.courses]
+average.score <- dat[,lapply(X=.SD, FUN = "mean",na.rm=TRUE), .SDcols = kc1.courses]
+std <- dat[,lapply(X=.SD, FUN="sd",na.rm=TRUE),.SDcols = kc1.courses]
+percentage <- dat[,lapply(X=.SD, FUN = "count.percentage"), .SDcols = kc1.courses]
+
+kc1.time <- c("Time: Mechanics_kc1", "Time: Momentum_kc1", "Time: Gravity_kc1")
+mean.minutes <- dat[,lapply(X=.SD, FUN="mean", na.rm=TRUE),.SDcols = kc1.time]
+setnames(mean.minutes,old = names(mean.minutes),new = names(percentage))
+sd.minutes <- dat[,lapply(X=.SD, FUN="sd", na.rm=TRUE),.SDcols = kc1.time]
+setnames(sd.minutes,old = names(sd.minutes),new = names(percentage))
+
+kc1.summary <- data.table(Topic = kc1.courses, t(student.number),t(average.score), t(std),
+                          t(percentage), t(mean.minutes), t(sd.minutes))
+new.name.kc1 <- c('Topic', 'Number of Students', 'Mean Score', 'Standard Deviation of Scores',
+                  'Percentage', 'Mean Minutes', 'Standard Deviation of Minutes')
+colnames(kc1.summary) <- new.name.kc1
+
+kc1.summary <- kc1.summary[, lapply(X = .SD, FUN = "round.numerics", digits = 2)]
+datatable(kc1.summary,rownames = FALSE)
+```
+
+
+```{r question6, echo=FALSE, eval=TRUE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`: Knowledge Check 2
+
+How did the students do on the second knowledge check?  Create a table with the following columns:
+
+* Topic
+
+* Number of Students (with measured scores)
+
+* Mean Score
+
+* Standard Deviation of Scores
+
+* Percentage Reaching Threshold 2.0 or Higher (on a scale from 0 to 100).
+
+* Mean Minutes
+
+* Standard Deviation of Minutes
+
+The table should have one row for each topic in the first Knowledge Check.  Round all numeric values to `r num.digits` decimal places.
+
+
+
+```{r summary_kc2}
+count.percentage.5 <- function(data){
+  percent <- sum(data >= 5.0, na.rm = TRUE)/sum(!is.na(data),na.rm = TRUE)
+  return(percent)
+}
+
+kc2.courses <- c("Mechanics_kc2", "Momentum_kc2", "Gravity_kc2", "Electricity_kc2",
+                 "Magnetism_kc2", "Relativity_kc2")
+
+student.number <- dat[,lapply(X = .SD, FUN = "count.not.na"), .SDcols = kc2.courses]
+average.score <- dat[,lapply(X=.SD, FUN = "mean",na.rm=TRUE), .SDcols = kc2.courses]
+std <- dat[,lapply(X=.SD, FUN="sd",na.rm=TRUE),.SDcols = kc2.courses]
+percentage <- dat[,lapply(X=.SD, FUN = "count.percentage.5"), .SDcols = kc2.courses]
+
+kc2.time <- c("Time: Mechanics_kc2", "Time: Momentum_kc2", "Time: Gravity_kc2",
+              "Time: Electricity_kc2", "Time: Magnetism_kc2", "Time: Relativity_kc2")
+
+mean.minutes <- dat[,lapply(X=.SD, FUN="mean", na.rm=TRUE),.SDcols = kc2.time]
+setnames(mean.minutes,old = names(mean.minutes),new = names(percentage))
+sd.minutes <- dat[,lapply(X=.SD, FUN="sd", na.rm=TRUE),.SDcols = kc2.time]
+setnames(sd.minutes,old = names(sd.minutes),new = names(percentage))
+
+kc2.summary <- data.table(Topic = kc2.courses, t(student.number),t(average.score), t(std),
+                          t(percentage), t(mean.minutes), t(sd.minutes))
+new.name.kc2 <- c('Topic', 'Number of Students', 'Mean Score', 'Standard Deviation of Scores',
+                  'Percentage', 'Mean Minutes', 'Standard Deviation of Minutes')
+colnames(kc2.summary) <- new.name.kc2
+
+kc2.summary <- kc2.summary[, lapply(X = .SD, FUN = "round.numerics", digits = 2)]
+datatable(kc2.summary,rownames = FALSE)
+
+```
+
+
+```{r question7, echo=FALSE, eval=TRUE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`: Is Time Spent Time Well Used?
+
+For each knowledge check topic at each level, compute the correlation between the students' scores and their minutes spent using the digital system.  Display the results using the **datatable** function in the **DT** package.  Round the numeric values to `r num.digits` decimal places.  
+
+Then comment on the findings.  Do you think spending more time on the digital system is beneficial?  Is your notion confirmed by the data?  Whatever you believe, why might the opposite be true?
+
+**Hint:**  Reshaping the data to place all of the knowledge check scores in one column and all of the time spent in another may simplify the calculation.  To do this, consider using the **melt** or **melt.data.table** function.
+
+```{r correlations_kc_time}
+score.column <- c(kc1.courses,kc2.courses)
+time.column <- c(kc1.time,kc2.time)
+
+topic <- c("Knowledge Check 1:Mechanics","Knowledge Check 1:Momentum",
+           "Knowledge Check 1:Gravity","Knowledge Check 2:Mechanics",
+           "Knowledge Check 2:Momentum","Knowledge Check 2:Gravity",
+           "Knowledge Check 2:Electricity","Knowledge Check 2:Magnetism",
+           "Knowledge Check 2:Relativity" )
+cor <- data.table(topic=topic)
+correlation <- numeric(length=length(score.column))
+for (i in 1:length(score.column)){
+  col1 <- score.column[i]
+  col2 <- time.column[i]
+  correlation[i] <- cor(x=dat[,get(col1)],y=dat[,get(col2)],use = "complete.obs")
+}
+cor[,"Correlation of Knowledge Check Score and Time Spent":=correlation]
+
+cor <- cor[, lapply(X = .SD, FUN = "round.numerics", digits = 2)]
+datatable(cor,rownames = FALSE)
+
+
+```
+
+####I originally think if students spending on the digital system, they will get higher score, which means the correlations is positive and it is beneficial. But my notion is not comfired by the data. Counterintuitively, all the correlations is negative which means it is even harmful to students if they spend more time on the digital system.
+####I assume the opposite is true because when the workload is the same, the students with better knowledge on this course will finish the work on digital system faster, so they spend shorter time. 
+
+
+```{r question8, echo=FALSE, eval=TRUE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`: Summary of Scores
+
+For each homework assignment, the student's average homework score across all assignments, the midterm exam, the final exam, and the overall score, compute the following quantities:
+
+* The number of students with a measured value.
+
+* The mean score.
+
+* The standard deviation of the score.
+
+Display these results using the **datatable** function in the **DT** package.  Round all of the numeric values to `r num.digits` decimal places.
+
+```{r}
+summary(grades)
+```
+
+
+
+```{r summary_of_scores}
+
+grades_topic <- names(grades)[-1]
+student.num.score <- grades[,lapply(X=.SD, FUN = "count.not.na"),.SDcol=grades_topic]
+student.mean.score <- grades[,lapply(X=.SD, FUN = "mean", na.rm=TRUE),.SDcol=grades_topic]
+student.sd.score <- grades[,lapply(X=.SD, FUN = "sd", na.rm=TRUE),.SDcol=grades_topic]
+
+
+grades.summary <- data.table('HW/Exam name'=grades_topic,
+                             'Number of Students with a Measured Value' = t(student.num.score),
+                             'Mean Score' = t(student.mean.score),
+                             'Standard Deviation of the Score' = t(student.sd.score))
+
+grades.summary <- grades.summary[, lapply(X = .SD, FUN = "round.numerics", digits = 2)]
+datatable(grades.summary,rownames = FALSE)
+
+```
+
+
+```{r question9, echo=FALSE, eval=TRUE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`:  Correlations with Outcomes
+
+For the purpose of evaluating the class, consider the following outcomes:
+
+* Homework Average
+* Midterm Score
+* Final Exam Score
+* Total Score
+
+For each of these outcomes, compute their correlation with each of the following predictors:
+
+* The Prior Knowledge Level
+* Total Minutes spent on the knowledge check activities.
+* The average score on the Level 2 knowledge checks (with a `r threshold.kc2` threshold).
+
+For the purpose of the time calculations, consider any missing value as a zero in computing each student's total minutes using the system.
+
+Display the results using the **datatable** function in the **DT** package.  Round all of the numeric values to `r num.digits` decimal places.
+
+```{r cor_outcomes_inputs}
+
+hw.avg <- rowMeans(dat[, 23:28], na.rm = TRUE)
+midterm <- dat[, get('Midterm')]
+final <- dat[, get('Final Exam')]
+total.score <- dat[, get('Total Score')]
+pkl <- dat[, get('Prior Knowledge Level')]
+total.min <- rowSums(dat[, c(8,9,10,17,18,19,20,21,22)], na.rm = TRUE)
+kc2.avg <- rowMeans(dat[, 11:16], na.rm = TRUE)
+
+temp.value <- data.table(hw.avg,midterm,final,total.score,pkl,total.min,kc2.avg)
+
+var1 <- c("hw.avg","midterm","final","total.score")
+var2 <- c("pkl","total.min","kc2.avg")
+
+variable1 <- c(length=12)
+variable2 <- c(length=12)
+correlation <- numeric(length = 12)
+for (i in 1:length(var1)) {
+  for (j in 1:length(var2)) {
+    variable1[3*(i-1)+j] <- var1[i]
+    variable2[3*(i-1)+j] <- var2[j]
+    correlation[3*(i-1)+j] <- cor(x=temp.value[,get(var1[i])],y=temp.value[,get(var2[j])])
+  }
+}
+
+corr.tab <- data.table(variable1,variable2,'corr.between'=correlation)
+corr.tab <- corr.tab[, lapply(X = .SD, FUN = "round.numerics", digits = 2)]
+corr.tab  <- dcast.data.table(corr.tab, variable2 ~ variable1)
+datatable(corr.tab,rownames = FALSE)
+
+```
+
+
+```{r question10, echo=FALSE, eval=TRUE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`: Qualitative and Quantitative Conclusions
+
+Based on the results that you have seen, what can you conclude about the digital system that the students used?  Does spending more time on the system seem to help improve the scores on the homwork, midterm, final exam, and overall grade?  How do higher scores on the system impact these outcomes?  And how does this compare to the impact of the Prior Knowledge Level?  Write a few sentences to outline your conclusions and recommendations.
+
+
+
+ 1.No, The correlations between time spent on digital system and grades are all very weak and correlation between the time spent and the homework is even negative.
+ 
+
+  2.The higher score on the system will leads to a higher scores on final exam ,total score and homework average.The correlation coefficients are 0.16, 0.22 and 0.5. The correlation with homework average is ralatively high, so it shows that the higher score on the system have very strong positive influence to the homework average.
+
+
+  3.For Prior Knowledge Level, the positive correlation coefficients with final and total score is higher than the counterpart of the higher score on the system, the correlation coefficient with midterm is positive, not negative as before. Only the correlation of it with home work average change from strongly positive to slightly negative. 
+  But as we all know, the home work scores are meaningless comparing to other scores and can be interfere by many other factors.
+  
+  
+
+  Conclusion: The time spent on the system has no stong correlation with the exams&homework scores and the (positive) correlation between the score on the system with exams scores are less significant comparying to the (positive) correlation between prior and exams scores. According to the results, the system is not very useful for students, students should spend more time on routinly courses and spare those time spend on system to learn show prior knowledge using traditional way.
+
+
+
+
+
+
+
+
+
+
+

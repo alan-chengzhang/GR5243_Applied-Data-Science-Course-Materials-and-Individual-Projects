@@ -1,0 +1,517 @@
+---
+title: "Homework 4"
+author: "Cheng Zhang (cz2532, cz2532@columbia.edu)"
+date: ""
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(echo = TRUE, eval = TRUE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+```
+
+
+```{r libraries, echo=FALSE}
+library(prettydoc)
+library(data.table)
+library(Hmisc)
+library(scales)
+library(DT)
+library(lubridate)
+```
+
+```{r constants, echo=FALSE}
+id.name <- "id"
+connection.id.name <- "connection_id"
+registration.time.name <- "registration.time"
+
+selected.user <- 2000
+min.common.connections <- 30
+
+min.connections.q3 <- 250
+min.photos.q3 <- 200
+min.connection.connections.q3 <- 150
+
+x.per.day <- 5
+first.x.days <- 7
+
+x.more <- 100
+
+```
+
+```{r my_functions, echo=FALSE}
+round.numerics <- function(x, digits = 0, nearest = 1){
+  if(is.numeric(x)){
+    return(nearest * round(x = x/nearest, digits = digits))
+  }
+  else{
+    return(x)
+  }
+}
+repair.broken.microseconds <- function(x){
+   require(data.table)
+
+   the.pieces <- as.data.table(t(as.data.table(strsplit(x = x, split = ":"))))
+
+   setnames(x = the.pieces, old = names(the.pieces), new = c("date_hours", "minutes", "seconds", "microseconds"))
+
+   the.pieces[microseconds == "00Z", microseconds := "000000Z"]
+
+   the.times <- the.pieces[, sprintf("%s:%s:%s%s", date_hours, minutes, seconds, microseconds)]
+
+   return(the.times)
+}
+
+```
+
+```{r read_data_intro, echo=FALSE, eval=TRUE, results='hide'}
+toc <- Sys.time()
+profiles <- fread(input = "../Data/Profiles.csv")
+connections <- fread(input = "../Data/Connections.csv")
+registrations <- fread(input = "../Data/Registrations.csv", colClasses = c("character", "POSIXct"), showProgress = FALSE)
+
+
+registrations[, original.registration.time := get(registration.time.name)]
+registrations[, eval(registration.time.name) := ymd_hms(get(registration.time.name))]
+
+w <- which(registrations[, is.na(get(registration.time.name))])
+
+registrations[w, eval(registration.time.name) := ymd_hms(repair.broken.microseconds(x = original.registration.time))]
+
+tic <- Sys.time()
+
+num.lines <- 20
+question.counter = 0
+```
+
+
+## About The Data
+
+We will be working with a simulated data set related to social media sites.  The data are stored in several files:
+
+**Profiles.csv**:  Information about the users with some fields from their profiles.
+
+**Connections.csv**:  Information about which users are connected to other users.
+
+**Registrations.csv**: Information about history of the user's account registrations (logins) over time.
+
+**Header** The first row of the data set includes the column names, and each subsequent row includes one observation of values.  Here is a selection of `r num.lines` lines from each data file:
+
+```{r show_header, echo=FALSE, comment=""}
+datatable(data = profiles[1:num.lines,])
+datatable(data = connections[1:num.lines,])
+datatable(data = registrations[1:num.lines,])
+```
+
+
+Here is a brief description of each variable across the three files:
+
+**Profiles Variables**:
+
+- **id**:  A unique identifying string for each user.
+
+- **density**:  The type of area the user lives in, with categories of Urban, Suburban, and Rural areas.
+
+- **gender**:  female (F) or male (M).
+
+- **has_profile_photo**:  1 if yes, 0 if no.
+
+- **num_photos**:  This is the number of photos the user has uploaded to the site.
+
+- **date_created**:  This is the date that the user first joined the site.
+
+**Connections Variables**:
+
+- **id**:  A unique identifying string for each user.
+
+- **connection_id**:  This is the identifier of another user that the user listed under **id** is connected to.
+
+This site chooses to use one-way connections.  A user can connect to a second user's profile without requiring that the second user reciprocally connect to the first one.  So, for any row in the Connections data, the user labeled with **id** is following the user labeled with **connection_id**.  In some cases, pairs of users are mutually following each other, but this is by no means required.  For mutual connections, the users will be coupled in two different rows in the two possible orders.  Each connection for a single user is recorded in a separate row.
+
+**Registrations Variables**:
+
+- **id**:  A unique identifying string for each user.
+
+- **registration.time**:  This is the date and time that a user registered by logging in to the site.  Each registration for a user is recorded in a separate row.
+
+
+```{r question1, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`:  Classifying Connections
+
+How often do users mutually follow each other, and how often are the connections one-way?  We want to investigate this.  For the investigation, we'll say that a two-way connection requires two one-way connections (two rows of data) but only counts once.  Therefore, the number of overall connections (total one-way plus total two-way) will be less than the overall number of rows of data in the Connections file.  With this in mind, answer these questions.
+
+What percentage of all connections are one-way connections, and what percentage of all connections are two-way connections?
+
+```{r connection_directionality_percentages}
+two <- merge(x = connections, y = connections, by.x = c(id.name, connection.id.name), 
+             by.y = c(connection.id.name, id.name))
+total.num <- connections[, .N]
+two.way <- two[, .N] / 2
+one.way <- total.num - 2 * two.way
+total <- one.way + two.way
+one.way.p <- round.numerics(100 * one.way/total, digits = 2) 
+two.way.p <- round.numerics(100 * two.way/total, digits = 2) 
+datatable(data.table("One way " = one.way.p, "Two way " = two.way.p))
+```
+
+
+
+```{r question2, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+```{r the_id, echo = FALSE}
+the.id <- profiles[selected.user, id]
+```
+
+
+## Question `r question.counter`: Recommending Connections
+
+Which connections should we recommend to the user with id `r the.id`?  One way is to find the unconnected users who are connected to users that user `r the.id` is also connected to.  Create a table of all the users who satisfy all of the following criteria: 
+  
+* have at least `r min.common.connections` connections in common with user `r the.id`'s connections, and
+* are not already connected with user `r the.id`.  
+  
+The list should show the ids of the recommended users and the number of common connections they have with user `r the.id`.  Order the list in decreasing order of mutual connections.  Make sure not to include `r the.id` on the list of recommendations!
+
+
+```{r recommendations}
+# Apologize for using the for loop, I find the previous answer may be wrong and change it in last minutes, so I don't have enough time to think carefully of it. Apologize for that.
+
+
+id.connected <- connections[id == the.id, connection_id]
+
+common_connections <- function(df, t.id, t.connections){
+  result = list()
+  select.id <- c(t.id, t.connections)
+  for (i in unique(connections$id)){
+    if (!(i %in% select.id)){
+      temp <- connections[id == i, connection_id]
+      temp.num <- length(intersect(temp, t.connections))
+      if (temp.num >= 30){
+          result[[length(result)+1]] <- c(i, temp.num)
+      }
+    }
+  }
+  return(result)
+}
+
+output <- common_connections(connections, the.id, id.connected)
+output <- t(data.frame(output))
+output <- output[order(output[,2], decreasing = TRUE),] 
+colnames(output) <- c("id","number")
+data.table(output)
+
+```
+
+
+```{r question3, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`:  Influential Connections
+
+In social networks, some users are considered **influential**.  They tend to have more connections, and their content can be widely viewed and shared.  For our purposes, we will define the **influential users** as those who:
+
+* Have at least `r min.photos.q3` photos, and 
+* Have at least `r min.connection.connections.q3` connections.
+
+Among all users (both influential and not so influential), how many users are connected to at least `r min.connections.q3` **influential** users?
+
+
+```{r characteristics_of_connections}
+influencial.profile <- profiles[num_photos >= min.photos.q3, get(id.name)]
+follower <- connections[, .(Num.follower = .N), keyby = connection.id.name]
+influencial.connection.id <- follower[get(connection.id.name) %in% influencial.profile &
+                                            Num.follower >= min.connection.connections.q3][,get(connection.id.name)]
+num.influencial <- connections[, sum(get(connection.id.name) %in% influencial.connection.id), keyby = id.name]
+users <- nrow(num.influencial[V1>=min.connections.q3])
+
+```
+`r users` users are connected to at least 250 influential users
+
+
+
+```{r question4, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`: Early Utilizers
+
+Starting from the time when the account for each user was created, what percentage of all users logged in at least `r x.per.day * first.x.days` times during the first `r first.x.days`?  Round your answer to 1 decimal point, e.g. 84.2%.
+
+**Hints**:  Within the **lubridate** library, you can use the function **days** to add a specified number of days to the registration times.  The first week ends before (less than) the user's first registration time plus 7 days.  The registration that occurred when the account was created counts toward the overall total for this period.
+
+
+```{r regular_users}
+library("lubridate")
+early.registration <- registrations[,ymd_hms(original.registration.time) <=
+                                     (min(ymd_hms(original.registration.time)+days(7))), keyby = id]
+
+active <- nrow(early.registration[V1 == TRUE, .N, keyby = id][N >= 35])
+num.user <- nrow(registrations[, .N, by = id])
+percent.active <- round.numerics(100*active/num.user, digits = 1) 
+```
+`r percent.active` percentage of all users logged in at least 35 times during the first 7
+
+
+```{r question5, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`: Imbalanced Connections
+
+What percentage of users have at least `r x.more` more followers than the number of users that they are following?  Round the answer to 1 decimal place, e.g. 84.2%.
+
+```{r imbalanced_connection_percentage}
+follow <- connections[,.("Following" = .N), by = id.name]
+follower <- connections[,.("Follower" = .N), by = connection.id.name]
+connect <- merge(follow, follower, by.x = id.name, by.y = connection.id.name)
+diff.num <- connect[Follower >= (Following + x.more), .N]
+percent.diff <- round.numerics(100*diff.num/num.user, digits = 1) 
+```
+
+`r percent.diff` percentage of users have at least 100 more followers than the number of users that they are following
+
+
+
+
+```{r question6, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`:  Active Users
+
+What percentage of unique users in the sample were active (with at least 1 registration) between 00:00:00 of January 1st, 2017 and 23:59:59 on January 7th, 2017?  Round the percentage to 1 decimal place, e.g. 84.2%
+
+**Hint**:  For any given date in character format (e.g. "1999-07-01"), you can calculate a date in the future with the **as.Date** function:  as.Date("1999-07-01") + 3 would result in "1999-07-04".
+
+```{r active_users}
+active <- registrations[, as.Date(original.registration.time) <= as.Date("2017-01-07") & 
+                          as.Date(original.registration.time) >= as.Date("2017-01-01"), keyby = id]
+
+active.num <- length(active[V1 == TRUE, unique(id)])
+percent.active <- round.numerics(100*active.num/num.user, digits = 1) 
+```
+
+`r percent.active` percentage of unique users in the sample were active (with at least 1 registration) between 00:00:00 of January 1st, 2017 and 23:59:59 on January 7th, 2017
+
+
+
+```{r question7, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`:  Burning the Midnight Oil
+
+Across all days, what percentage of all registrations occur between the hours of 00:00:00 and 05:59:59, inclusive of both endpoints?  Round your answer to 1 decimal place, e.g. 84.2%.  **Hint:**  Use the hour() function to classify the time of day.
+
+
+```{r midnight_oil}
+midnight <- registrations[, (hour(registration.time) >= 0 
+                              & hour(registration.time) < 6), keyby = id]
+midnight.num <- length(midnight[V1 == TRUE, id])
+percent.midnight <- round.numerics(100*midnight.num/nrow(registrations), digits = 1) 
+```
+`r percent.midnight` percentage of all registrations occur between the hours of 00:00:00 and 05:59:59
+
+
+
+```{r question8, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`:  Retention Rates
+
+What percentage of users were retained at 183 days (half a year)?  To answer this question, we will use a 7 day window.  Any user who had at least one registration in the period of time that was at least 183 days and less than 190 days from their first registration would be considered retained.  Round your answer to 1 decimal place, e.g. 84.2%.
+
+**Note:** The evaluation window would begin at exactly 183 days after the first registration.  This period lasts for 7 days.  This window would include the left end-point but not the right end-point.  The registration times are listed in the data set rounded to the nearest second. If the user had at least 1 registration during this window, the user would be considered retained at 183 days (approximately 6 months).
+
+**Hint:**  You may use the **days()** function to add time to a user's initial registration time.
+
+
+```{r retention_rate}
+retention <- registrations[, as.Date(registration.time) >= (min(as.Date(registration.time) + days(183))) &
+                             as.Date(registration.time) < (min(as.Date(registration.time) + days(190))), keyby = id]
+retention.num <- length(retention[V1==T, unique(id)])
+percent.retention <- round.numerics(100*retention.num/num.user, digits = 1) 
+```
+`r percent.retention` percentage of users were retained at 183 days
+
+
+
+```{r question9, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+## Question `r question.counter`:  False Positive Rates
+
+In the previous question, we estimated the rate of retention at 6 months using a 7-day window for evaluation.  What is the rate of false positives for the 7-day window?  In other words, what percentage of users who were considered not retained at 6 months using a 7-day window later had a registration?  Round the results to 2 decimal places, e.g. 84.23%.
+
+```{r false_positive_rate}
+total.retention <- registrations[, as.Date(registration.time) >= (min(as.Date(registration.time) + days(183))),
+                                 keyby = id]
+total.retention.num <- length(total.retention[V1==TRUE, unique(id)])
+false.positive <- (total.retention.num - retention.num)/(num.user - retention.num)
+percent.false.positive <- round.numerics(100*false.positive, digits = 2) 
+```
+
+The rate of false positives for the 7-day window is `r percent.false.positive`
+
+
+```{r question10, echo=FALSE}
+question.counter <- question.counter + 1
+```
+
+
+```{r function, echo=FALSE}
+# All the following functions are given by professor David in the "Reporting Engin.Rmd"
+
+fit.model <- function(dt, outcome.name, input.names, model.type, digits = 3){
+  the.formula <- reduce.formula(dt = dt, outcome.name = outcome.name, input.names = input.names)
+  
+  if(model.type == "logistic"){
+    mod <- glm(formula = the.formula, family = "binomial", data = dt)
+    mod.summary <- logistic.regression.summary(glm.mod = mod, digits = digits)
+  }
+  if(model.type == "linear"){
+    mod <- lm(formula = the.formula, data = dt)
+    mod.summary <- linear.regression.summary(lm.mod = mod, digits = digits)
+  }
+  mod.summary.rounded <- mod.summary[, lapply(X = .SD, FUN = "round.numerics", digits = digits)]
+  return(mod.summary.rounded)
+}
+
+logistic.regression.summary <- function(glm.mod, digits = 3){
+  library(data.table)
+  glm.coefs <- as.data.table(summary(glm.mod)$coefficients, keep.rownames = TRUE)
+  alpha = 0.05
+  z <- qnorm(p = 1-alpha/2, mean = 0, sd = 1)
+  glm.coefs[, Odds.Ratio := exp(Estimate)]
+  glm.coefs[, OR.Lower.95 := exp(Estimate - z * `Std. Error`)]
+  glm.coefs[, OR.Upper.95 := exp(Estimate + z * `Std. Error`)]
+  return(glm.coefs[])
+}
+linear.regression.summary <- function(lm.mod, digits = 3){
+  library(data.table)
+  lm.coefs <- as.data.table(summary(lm.mod)$coefficients, keep.rownames = TRUE)
+  alpha = 0.05
+  z <- qnorm(p = 1-alpha/2, mean = 0, sd = 1)
+  lm.coefs[, Coef.Lower.95 := Estimate - z * `Std. Error`]
+  lm.coefs[, Coef.Upper.95 := Estimate + z * `Std. Error`]
+  return(lm.coefs)
+}
+
+
+create.formula <- function(outcome.name, input.names, input.patterns = NA, all.data.names = NA, return.as = "character"){
+  
+  variable.names.from.patterns <- c()
+  if(!is.na(input.patterns[1]) & !is.na(all.data.names[1])){
+    pattern <- paste(input.patterns, collapse = "|")
+    variable.names.from.patterns <- all.data.names[grep(pattern = pattern, x = all.data.names)]
+  }
+  all.input.names <- unique(c(input.names, variable.names.from.patterns))
+  all.input.names <- all.input.names[all.input.names != outcome.name]
+  
+  if(!is.na(all.data.names[1])){
+    all.input.names <- all.input.names[all.input.names %in% all.data.names]
+  }
+
+  input.names.delineated <- sprintf("`%s`", all.input.names)
+  the.formula <- sprintf("`%s` ~ %s", outcome.name, paste(input.names.delineated, collapse = "+"))
+  
+  if(return.as == "formula"){
+    return(as.formula(the.formula))
+  }
+  if(return.as != "formula"){
+    return(the.formula)
+  }
+}
+
+reduce.formula <- function(dt, outcome.name, input.names, input.patterns = NA, max.input.categories = 20, max.outcome.categories.to.search = 4, return.as = "formula"){
+  require(data.table)
+  dt <- setDT(dt)
+  
+  if(!(outcome.name %in% names(dt))){
+    return("Error:  outcome.name is not in names(dt).")
+  }
+  
+  pattern.names <- list()
+  if(!is.na(input.patterns[1])){
+    for(i in 1:length(input.patterns)){
+      pattern.names[[i]] <- names(dt)[grep(pattern = input.patterns[i], x = names(dt))]
+    }
+  }
+  all.input.names <- c(input.names, as.character(pattern.names))
+  
+  num.outcome.categories <- dt[!is.na(get(outcome.name)), length(unique(get(outcome.name)))]
+  
+  if(num.outcome.categories <= max.outcome.categories.to.search){
+    num.unique.tab <- dt[, lapply(X = .SD, FUN = function(x){return(length(unique(x[!is.na(x)])))}), .SDcols = input.names, by = outcome.name]
+    min.categories.tab <- num.unique.tab[, lapply(X = .SD, FUN = "min"), .SDcols = input.names]
+    
+    reduced.inputs <- names(min.categories.tab)[min.categories.tab >= 2]
+  }
+  if(num.outcome.categories > max.outcome.categories.to.search){
+    reduced.inputs <- all.input.names
+  }
+  
+  the.formula <- create.formula(outcome.name = outcome.name, input.names = reduced.inputs, all.data.names = names(dt), input.patterns = NA, return.as = return.as)
+  return(the.formula)
+}
+
+add.backtick <- function(x, include.backtick = "as.needed"){
+  if(include.backtick == "all"){
+    w <- 1:length(x)
+  }
+  if(include.backtick == "as.needed"){
+    w <- grep(pattern = " ", x = x, fixed = TRUE)
+  }  
+  if(length(w) > 0){
+    x[w] <- sprintf("`%s`", x[w])
+  }
+
+  return(x)
+}
+```
+
+
+
+## Question `r question.counter`:  Modeling Retention
+
+Build a logistic regression model for retention at 6 months.  Classify users as retained at 6 months if they have any account registrations at times at least 183 days after their account was created.  Include the following variables:
+  
+* density
+* age_group
+* gender
+* num_photos (categories:  0-24, 25-49, 50-99, 100-249, 250-499, 500+)  (current status)
+* average daily registrations in the first week.  (To simplify matters, let this be the total number of registrations in the first week divided by 7, regardless of whether the user's retention truly lasted 7 days or not.)
+* number of connections the user currently has
+* number of users currently connected to this user
+
+Display the odds ratios, confidence intervals for the odds ratios, and p-values for the coefficients, rounded to 3 digits.  Then briefly comment on the results.
+
+```{r retention_model}
+total.retention.id <- total.retention[V1 == TRUE, unique(id)]
+model.dat <- merge(connect, profiles)
+y <- model.dat[, .('id'= id, y= id %in% total.retention.id)]
+model.dat <- merge(model.dat, y)
+early <- early.registration[, .("average daily registrations"= sum(V1)/7), keyby = id]
+model.dat <- merge(model.dat, early)
+res <- fit.model(dt = model.dat, 
+                 outcome.name = 'y', 
+                 input.names = c("density","age_group","gender","num_photos","average daily registrations",
+                                 "Following","Follower" ), 
+                 model.type = 'logistic')
+datatable(data = res[, lapply(X = .SD, FUN = "round.numerics", digits = 3)])
+
+```
+
+The odds ratio of average daily registrations is the highest(2.275), which means if the average daily registrations increase 1, the retention after six months(y) will be 2.275 times than before. In another word, the retention is highly positively related to the average daily registrations in the first week.
+Besides, the retention after six months(y) is not related to the number of followers, the number of following, and num_phone, since the odds ratios are 1 or around 1.

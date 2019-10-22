@@ -1,0 +1,508 @@
+---
+title: "Homework 3 Solutions"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(rmarkdown)
+library(knitr)
+library(Hmisc)
+library(DT)
+
+library(data.table)
+assignInNamespace("cedta.override", c(data.table:::cedta.override,"rmarkdown"), "data.table")
+
+
+opts_chunk$set(echo = FALSE, comment="", warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=55), tidy = TRUE)
+
+```
+
+
+```{r read_data}
+dat <- fread(input = "../Data/Homework 3 Data.csv", verbose = FALSE)
+```
+
+
+```{r constants}
+id.name <- "id"
+age.name <- "Age"
+gender.name <- "Gender"
+income.name <- "Income"
+region.name <- "Region"
+persona.name <- "Persona"
+
+product.name <- "Product"
+awareness.name <- "Awareness"
+consideration.name <- "Consideration"
+consumption.name <- "Consumption"
+satisfaction.name <- "Satisfaction"
+advocacy.name <- "Advocacy"
+
+pattern.bp <- "BP_"
+
+age.group.name <- "Age Group"
+income.group.name <- "Income Group"
+
+cuts.age <- c(18, 35, 50, 65, 120)
+cuts.income <- 1000* c(0, 50, 75, 100, 150, 250)
+
+dat[, eval(age.group.name) := cut2(x = get(age.name), cuts = cuts.age)]
+dat[, eval(income.group.name) := cut2(x = get(income.name), cuts = cuts.income)]
+dat[, eval(satisfaction.name) := get(satisfaction.name)/10]
+
+unique.age.groups <- dat[, unique(get(age.group.name))]
+unique.genders <- dat[, unique(get(gender.name))]
+unique.income.groups <- dat[, unique(get(income.group.name))]
+unique.regions <- dat[, unique(get(region.name))]
+unique.personas <- dat[, unique(get(persona.name))]
+
+unique.products <- dat[, unique(get(product.name))]
+num.products <- length(unique.products)
+
+respondent.variables <- c(age.group.name, gender.name, income.group.name, region.name, persona.name)
+states.of.engagement <- c(awareness.name, consideration.name, consumption.name, satisfaction.name, advocacy.name)
+bp.traits <- names(dat)[grep(pattern = pattern.bp, x = names(dat))]
+```
+
+```{r functions}
+percentage.table <- function(x, digits = 1){
+  tab <- table(x)
+  percentage.tab <- 100*tab/(sum(tab))
+  rounded.tab <- round(x = percentage.tab, digits = digits)
+  return(rounded.tab)
+}
+
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+
+percentage.table <- function(x, digits = 1){
+  tab <- table(x)
+  percentage.tab <- 100*tab/(sum(tab))
+  rounded.tab <- round(x = percentage.tab, digits = digits)
+  return(rounded.tab)
+}
+
+round.numerics <- function(x, digits){
+  if(is.numeric(x)){
+    x <- round(x = x, digits = digits)
+  }
+  return(x)
+}
+
+compute.rates <- function(dat, variable.names, by.name, age_group, gender_group, income_group, region_group, persona_group){
+  library(data.table)
+  dat <- as.data.table(dat)
+  
+  rates <- dat[get(age.group.name) %in% age_group & get(gender.name) %in% gender_group & get(income.group.name) %in% income_group & get(region.name) %in% region_group & get(persona.name) %in% persona_group, lapply(X = .SD, FUN = "mean", na.rm = TRUE), .SDcols = variable.names, by = by.name]
+  
+  return(rates)
+}
+
+mean.diff <- function(x, y){
+  return(mean(x, na.rm=TRUE) - mean(y, na.rm=TRUE))
+}
+
+num.unique <- function(x){
+  unique.values <- unique(x)
+  unique.values <- unique.values[!is.na(unique.values)]
+  len <- length(unique.values)
+  return(len)
+}
+
+min.above <- function(x, threshold,  na.rm = TRUE){
+  the.min <- min(x, na.rm = na.rm)
+  if(the.min > threshold){
+    return(TRUE)
+  }
+  else{
+    return(FALSE)
+  }
+}
+
+reduce.formula <- function(dt, outcome.name, input.names, input.patterns = NA, max.input.categories = 20, max.outcome.categories.to.search = 4, return.as = "formula"){
+  require(data.table)
+  dt <- setDT(dt)
+  
+  if(!(outcome.name %in% names(dt))){
+    return("Error:  outcome.name is not in names(dt).")
+  }
+  
+  pattern.names <- list()
+  if(!is.na(input.patterns[1])){
+    for(i in 1:length(input.patterns)){
+      pattern.names[[i]] <- names(dt)[grep(pattern = input.patterns[i], x = names(dt))]
+    }
+  }
+  all.input.names <- c(input.names, as.character(pattern.names))
+  
+  num.outcome.categories <- dt[!is.na(get(outcome.name)), length(unique(get(outcome.name)))]
+  
+  if(num.outcome.categories <= max.outcome.categories.to.search){
+    num.unique.tab <- dt[, lapply(X = .SD, FUN = function(x){return(length(unique(x[!is.na(x)])))}), .SDcols = input.names, by = outcome.name]
+    min.categories.tab <- num.unique.tab[, lapply(X = .SD, FUN = "min"), .SDcols = input.names]
+    
+    reduced.inputs <- names(min.categories.tab)[min.categories.tab >= 2]
+  }
+  if(num.outcome.categories > max.outcome.categories.to.search){
+    reduced.inputs <- all.input.names
+  }
+  
+  the.formula <- create.formula(outcome.name = outcome.name, input.names = reduced.inputs, all.data.names = names(dt), input.patterns = NA, return.as = return.as)
+  return(the.formula)
+}
+
+add.backtick <- function(x, include.backtick = "as.needed"){
+  if(include.backtick == "all"){
+    w <- 1:length(x)
+  }
+  if(include.backtick == "as.needed"){
+    w <- grep(pattern = " ", x = x, fixed = TRUE)
+  }  
+  if(length(w) > 0){
+    x[w] <- sprintf("`%s`", x[w])
+  }
+
+  return(x)
+}
+
+
+create.formula <- function(outcome.name, input.names, input.patterns = NA, all.data.names = NA, include.backtick = "as.needed", return.as = "character"){
+  
+  variable.names.from.patterns <- c()
+  if(!is.na(input.patterns[1]) & !is.na(all.data.names[1])){
+    pattern <- paste(input.patterns, collapse = "|")
+    variable.names.from.patterns <- all.data.names[grep(pattern = pattern, x = all.data.names)]
+  }
+  all.input.names <- unique(c(input.names, variable.names.from.patterns))
+  all.input.names <- all.input.names[all.input.names != outcome.name]
+  
+  if(!is.na(all.data.names[1])){
+    all.input.names <- all.input.names[all.input.names %in% all.data.names]
+  }
+
+  input.names.delineated <- add.backtick(x =  all.input.names, include.backtick = include.backtick)
+  outcome.name.delineated <- add.backtick(x = outcome.name, include.backtick = include.backtick)
+  the.formula <- sprintf("%s ~ %s", outcome.name.delineated, paste(input.names.delineated, collapse = "+"))
+  
+  if(return.as == "formula"){
+    return(as.formula(the.formula))
+  }
+  if(return.as != "formula"){
+    return(the.formula)
+  }
+}
+
+linear.regression.summary <- function(lm.mod, digits = 3){
+  library(data.table)
+  lm.coefs <- as.data.table(summary(lm.mod)$coefficients, keep.rownames = TRUE)
+  alpha = 0.05
+  z <- qnorm(p = 1-alpha/2, mean = 0, sd = 1)
+  lm.coefs[, Coef.Lower.95 := Estimate - z * `Std. Error`]
+  lm.coefs[, Coef.Upper.95 := Estimate + z * `Std. Error`]
+  return(lm.coefs)
+}
+
+logistic.regression.summary <- function(glm.mod, digits = 3){
+  library(data.table)
+  glm.coefs <- as.data.table(summary(glm.mod)$coefficients, keep.rownames = TRUE)
+  alpha = 0.05
+  z <- qnorm(p = 1-alpha/2, mean = 0, sd = 1)
+  glm.coefs[, Odds.Ratio := exp(Estimate)]
+  glm.coefs[, OR.Lower.95 := exp(Estimate - z * `Std. Error`)]
+  glm.coefs[, OR.Upper.95 := exp(Estimate + z * `Std. Error`)]
+  return(glm.coefs[])
+}
+
+fit.model <- function(dat, the.formula, model.type, digits = 3){
+  if(model.type == "logistic"){
+    mod <- glm(formula = the.formula, family = "binomial", data = dat)
+    mod.summary <- logistic.regression.summary(glm.mod = mod, digits = digits)
+  }
+  if(model.type == "linear"){
+    mod <- lm(formula = the.formula, data = dat)
+    mod.summary <- linear.regression.summary(lm.mod = mod, digits = digits)
+  }
+  mod.summary.rounded <- mod.summary[, lapply(X = .SD, FUN = "round.numerics", digits = digits)]
+  setnames(x = mod.summary.rounded, old = "rn", new = "Variable")
+  mod.summary.rounded[, Variable := gsub(pattern = "`", replacement = "", x = Variable, fixed = TRUE)]
+  return(mod.summary.rounded)
+}
+
+q1.graphs <- function(dat, respondent_variable, respondent_show_percentages = TRUE, las = 1, q1_magnify_names = 1, ylim = NA, col = "dodgerblue1"){
+  
+  library(data.table)
+  dat <- as.data.table(dat)
+  
+  tab <- percentage.table(x = dat[get(product.name) == Product[1], get(respondent_variable)])
+  
+  if(is.na(ylim[1])){
+    ylim <- c(-50, 1.5*max(tab))
+  }
+  
+  barplot(height = tab, space=0.01, las = 1, main = respondent_variable, cex.names = q1_magnify_names, col = col, ylim = ylim, xaxt = "n", axes = F, ylab = "Percentage")
+  axis(side = 2, at = 10*(0:(1+ceiling(ylim[2]/10))), las = 2)
+  
+  how.many <- length(tab)
+  
+  text(x = -0.5 + 1.02*(1:how.many), y = -15, labels = names(tab)[1:how.many], srt = 45, cex = q1_magnify_names, pos = 2)
+  
+  if(respondent_show_percentages == TRUE){
+    space_val = 0
+    text(x = -0.4 + 1:how.many * (1+space_val), y = tab, labels = sprintf("%.1f%%", tab), pos = 3)
+  }
+}
+
+
+q2.graphs <- function(dat, q2_state, by.name = product.name, q2_age_group, q2_gender, q2_income_group, q2_region, q2_persona, q2_how_many = 5, q2_magnify_names = 1, q2_show_percentages = TRUE, q2_digits = 1, col = "dodgerblue1"){
+  
+  require(data.table)
+  dat <- setDT(dat)
+  
+  rates <- compute.rates(dat = dat, variable.names = q2_state, by.name = by.name, age_group = q2_age_group, gender_group = q2_gender, income_group = q2_income_group, region_group = q2_region, persona_group = q2_persona)
+  
+  setorderv(x = rates, cols = q2_state, order = -1, na.last = TRUE)
+  
+  barplot(height = 100*rates[1:q2_how_many,  get(q2_state)], names.arg = rates[1:q2_how_many, get(by.name)], space=0.01, las = 1, main = q2_state, ylab = sprintf("Rate of %s", q2_state), cex.names = q2_magnify_names, ylim = c(-100, 120), xaxt = "n", axes = F, col = col)
+  axis(side = 2, at = 20*(0:5), las = 2)
+  
+  text(x = -0.5  + 1.02*1:q2_how_many, y = -15, labels = rates[1:q2_how_many, get(by.name)], srt = 45, cex = q2_magnify_names, pos = 2)
+  
+  if(q2_show_percentages == TRUE){
+    space_val = 0
+    text(x = -0.4 + 1:q2_how_many * (1+space_val), y = 100*rates[1:q2_how_many, get(q2_state)], labels = sprintf("%s%%", round(x = 100 * rates[1:q2_how_many, get(q2_state)], digits = q2_digits)), pos = 3)
+  }
+}
+
+q3.graphs <- function(dat, bp.traits, by.name = product.name, q3_age_group, q3_gender, q3_income_group, q3_region, q3_persona, q3_how_many = 5, q3_magnify_names = 0.8, q3_show_percentages = TRUE, negative.patterns = c("Boring", "Bulky", "Fragile", "Expensive"), col = "dodgerblue1"){
+  
+  library(data.table)
+  dat <- as.data.table(dat)
+  
+  rates <- compute.rates(dat = dat, variable.names = bp.traits, by.name = by.name, age_group = q3_age_group, gender = q3_gender, income_group = q3_income_group, region = q3_region, persona = q3_persona)
+  
+  negative.names <- names(rates)[grep(pattern = paste(negative.patterns, collapse = "|"), x = names(rates))]
+  
+  bp.min = 0
+  bp.max = 10
+  
+  for(negative.name in negative.names){
+    rates[, eval(negative.name) := bp.min + bp.max - get(negative.name)]
+  }
+  
+  metric.name <- "BP_Overall_Average"
+  
+  
+  bps <- rates[, .(x = rowMeans(x = .SD)), by = by.name]
+  setnames(x = bps, old = "x", new = metric.name)
+  setorderv(x = bps, cols = metric.name, order = -1, na.last = TRUE)
+  
+  barplot(height = bps[1:q3_how_many,  get(metric.name)], names.arg = rates[1:q3_how_many, get(by.name)], space=0.01, las = 1, main = metric.name, ylab = metric.name, cex.names = q3_magnify_names, ylim = c(-8, 10), xaxt = "n", axes = F, col = col)
+  axis(side = 2, at = 2*(0:5), las = 2)
+  
+  text(x = -0.3 + 1.02*1:q3_how_many, y = -2, labels = bps[1:q3_how_many, get(by.name)], srt = 45, cex = q3_magnify_names, pos = 2)
+  
+  
+  if(q3_show_percentages == TRUE){
+    space_val = 0
+    text(x = -0.4 + 1:q3_how_many * (1+space_val), y = bps[1:q3_how_many, get(metric.name)], labels = bps[1:q3_how_many, round(x = get(metric.name), digits = 1)], pos = 3)
+  }
+  
+}
+
+
+q4.graphs <- function(dat, q4_outcome1, q4_outcome2, by.name = "Product", q4_how_many, q4_magnify_names, q4_show_percentages, q4_digits, col = "dodgerblue1"){
+  library(data.table)
+  
+  dat <- as.data.table(dat)
+  
+  tab <- dat[, .(Difference = 100 * mean.diff(x = get(q4_outcome1), y = get(q4_outcome2))), by = by.name]
+  setorderv(x = tab, cols = "Difference", order = -1)
+  
+  ylim = c(pmin(-60, 1.5 * min(tab[1:q4_how_many, Difference], na.rm=TRUE)), 1.4 * max(tab[1:q4_how_many, Difference], na.rm = TRUE))
+  barplot(height = tab[1:q4_how_many, Difference], names.arg = tab[1:q4_how_many, get(by.name)], space=0.01, las = 1, main = sprintf("%s - %s", q4_outcome1, q4_outcome2), ylab = "Difference in Percentages", xlab = by.name, ylim = ylim, xaxt = "n", axes = FALSE, col = col)
+  
+  axis(side = 2, at = 20*(0:pmin(5, ceiling(max(tab[, Difference], na.rm=TRUE)/20))), las = 2)
+  
+  text(x = -0.3 + 1.02*1:q4_how_many, y = -10, labels = tab[1:q4_how_many, get(by.name)], srt = 45, cex = q4_magnify_names, pos = 2)
+  
+  if(q4_show_percentages == TRUE){
+    space_val = 0
+    text(x = -0.4 + 1:tab[1:q4_how_many, .N] * (1+space_val), y = tab[1:q4_how_many, Difference], labels = sprintf("%s%%", as.character(round(x = tab[1:q4_how_many, Difference], digits = q4_digits))), pos = 3)
+  }
+}
+
+q5.mod <- function(dat, q5_product, q5_state, q5_variables, id.name = "id"){
+  library(data.table)
+  library(DT)
+  
+  dat <- setDT(dat)
+  
+  aggregated.engagement.table <- dat[!(get(product.name) %in% q5_product), .(Aggregated.Engagement = 100*mean(get(q5_state), na.rm=TRUE)), by = id.name]
+  
+  brand.dat <- merge(x = dat[get(product.name) == q5_product, ], y = aggregated.engagement.table, by = id.name)
+  
+  the.formula <- reduce.formula(dt = brand.dat, outcome.name = q5_state, input.names = q5_variables)
+  
+  if(q5_state == "Satisfaction"){
+    model.type = "linear"
+  }
+  else{
+    model.type = "logistic"
+  }
+  
+  mod <- fit.model(dat = brand.dat, the.formula = the.formula, model.type = model.type)
+  datatable(data = mod)
+}
+
+```
+
+Introduction
+=====================================  
+
+We are analyzing data from the Marketing Department covering a variety of mobile phone products.  
+
+The survey was given to `r dat[, length(unique(id))]` respondents and covered `r num.products` separate products.
+
+Click on the tabs to see different reports.
+
+
+Question 1
+===================================
+
+
+Row {data-height=500}
+-------------------------------------
+
+```{r respondents}
+inputPanel(
+  selectInput(inputId="q1_variable", label = "Select Variable:", choices = respondent.variables, selected = respondent.variables[1]),
+  checkboxInput(inputId = "q1_show_percentages", label = "Show Percentages", value = TRUE)
+)
+
+renderPlot({
+  q1.graphs(dat = dat, respondent_variable = input$q1_variable, respondent_show_percentages = input$q1_show_percentages)
+})
+```
+
+Question 2
+=====================================  
+
+
+Row {data-height=900}
+-------------------------------------
+
+```{r products}
+inputPanel(
+  selectInput(inputId="q2_state", label = "State of Engagement:", choices = states.of.engagement, selected = states.of.engagement[1]),
+  selectInput(inputId="q2_age_group", label = "Age", choices = unique.age.groups, selected = unique.age.groups, multiple = TRUE),
+  selectInput(inputId = "q2_gender", label = "Gender", choices = unique.genders, selected = unique.genders, multiple = TRUE),
+  selectInput(inputId = "q2_income_group", label = "Income", choices = unique.income.groups, selected = unique.income.groups, multiple = TRUE),
+  selectInput(inputId = "q2_region", label = "Region", choices = unique.regions, selected = unique.regions, multiple = TRUE),
+  selectInput(inputId = "q2_persona", label = "Persona", choices = unique.personas, selected = unique.personas, multiple = TRUE),
+  sliderInput(inputId = "q2_how_many", label = "Show Top k Products", min = 1, max = num.products, value = 5, step = 1),
+  sliderInput(inputId = "q2_magnify_names", label = "Magnify Names", min = 0.2, max = 2, value = 0.6, step = 0.1),
+  checkboxInput(inputId = "q2_show_percentages", label = "Show Percentages", value = TRUE),   sliderInput(inputId = "q2_digits", label = "Number of Decimal Places", min = 0, max = 3, value = 1, step = 1)
+)
+```
+
+Row {data-height=500}
+-------------------------------------
+
+```{r product_output}
+renderPlot({
+  q2.graphs(dat = dat, q2_state = input$q2_state, by.name = product.name, q2_age_group = input$q2_age_group, q2_gender = input$q2_gender, q2_income_group = input$q2_income_group, q2_region = input$q2_region, q2_persona = input$q2_persona, q2_how_many = input$q2_how_many, q2_magnify_names = input$q2_magnify_names, q2_show_percentages = input$q2_show_percentages, q2_digits = input$q2_digits)
+})
+```
+
+
+Question 3
+=====================================  
+
+Row {data-height=500}
+-------------------------------------
+
+```{r brand_perceptions}
+inputPanel(
+  selectInput(inputId="q3_age_group", label = "Age", choices = unique.age.groups, selected = unique.age.groups, multiple = TRUE),
+  selectInput(inputId = "q3_gender", label = "Gender", choices = unique.genders, selected = unique.genders, multiple = TRUE),
+  selectInput(inputId = "q3_income_group", label = "Income", choices = unique.income.groups, selected = unique.income.groups, multiple = TRUE),
+  selectInput(inputId = "q3_region", label = "Region", choices = unique.regions, selected = unique.regions, multiple = TRUE),
+  selectInput(inputId = "q3_persona", label = "Persona", choices = unique.personas, selected = unique.personas, multiple = TRUE),
+  sliderInput(inputId = "q3_how_many", label = "Show Top k Products", min = 1, max = num.products, value = 5, step = 1),
+  sliderInput(inputId = "q3_magnify_names", label = "Magnify Names", min = 0.2, max = 2, value = 0.6, step = 0.1),
+  checkboxInput(inputId = "q3_show_percentages", label = "Show Percentages", value = TRUE)
+)
+# input = list(q3_age_group = unique.age.groups, q3_gender = unique.genders, q3_income_group = unique.income.groups, q3_region = unique.regions, q3_persona = unique.personas, q3_how_many = 5, q3_magnify_names = 0.6, q3_show_percentages = TRUE)
+
+```
+
+Row {data-height=500}
+-------------------------------------
+
+```{r q3_render}
+renderPlot({
+  
+ q3.graphs(dat = dat, bp.traits = bp.traits, by.name = product.name, q3_age_group = input$q3_age_group, q3_gender = input$q3_gender, q3_income_group = input$q3_income_group, q3_region = input$q3_region, q3_persona = input$q3_persona, q3_how_many = input$q3_how_many, q3_magnify_names = input$q3_magnify_names, q3_show_percentages = input$q3_show_percentages)
+  
+})
+
+```
+
+Question 4
+=====================================  
+
+Row {data-height=500}
+-------------------------------------
+
+```{r engagement_plots}
+inputPanel(
+  selectInput(inputId="q4_outcome1", label = "Outcome 1:", choices = states.of.engagement, selected = states.of.engagement[1]),
+  selectInput(inputId="q4_outcome2", label = "Outcome 2:", choices = states.of.engagement, selected = states.of.engagement[2]),
+  sliderInput(inputId="q4_how_many", label = "How Many Products?", min = 1, max = num.products, value = 5, step = 1),
+  checkboxInput(inputId = "q4_show_percentages", label = "Show Percentages", value = TRUE),
+  sliderInput(inputId = "q4_digits", label = "Round to", min = 0, max = 4, value = 1, step = 1),
+  sliderInput(inputId = "q4_magnify_names", label = "Magnify Names", min = 0.4, max = 2.5, value = 1, step = 0.1)
+)
+
+
+renderPlot({
+  
+  q4.graphs(dat = dat, q4_outcome1 = input$q4_outcome1, q4_outcome2 = input$q4_outcome2, by.name = product.name, q4_how_many = input$q4_how_many, q4_magnify_names = input$q4_magnify_names, q4_show_percentages = input$q4_show_percentages, q4_digits = input$q4_digits)
+})
+
+```
+
+Question 5
+=====================================  
+
+Row {data-height=300}
+-------------------------------------
+
+
+```{r engagement_models}
+inputPanel(
+  selectInput(inputId="q5_product", label = "Brand", choices = unique.products, selected = unique.products[1], multiple = TRUE),
+  selectInput(inputId="q5_state", label = "State of Engagement:", choices = states.of.engagement, selected = states.of.engagement[1]),
+  selectInput(inputId="q5_variables", label = "Select Variables", choices = c("Aggregated.Engagement", respondent.variables, bp.traits), selected = c("Aggregated.Engagement", respondent.variables), multiple = TRUE)
+)
+
+#input = list(q5_product = unique.products[1], q5_state = states.of.engagement[1], q5_variables = c("Aggregated.Engagement", respondent.variables))
+
+renderDataTable({
+
+  q5.mod(dat = dat, q5_product = input$q5_product, q5_state = input$q5_state, q5_variables = input$q5_variables, id.name = id.name)
+
+})
+
+```
+
+Row {data-height=700}
+-------------------------------------
