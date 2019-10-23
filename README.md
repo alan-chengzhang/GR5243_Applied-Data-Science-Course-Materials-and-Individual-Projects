@@ -1,7 +1,10 @@
 # GR5243_Applied-Data-Science-Course-Materials-and-Individual-Projects
 
 Course Materials and homeworks of Applied Data Science.
-The homeworks are individual projects of a big topic and many subquestions and requirements
+
+The homeworks are individual projects of a big topic with many subquestions and requirements。
+
+---------------------------------------------------------------------------------------------------------------------------------------
 
 Please be aware that there materials can just be used for personal study. DO NOT use them for profit.
 
